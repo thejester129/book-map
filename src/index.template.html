@@ -630,8 +630,6 @@ function sizeLabels(){
   gDots.selectAll("circle").attr("r", 3.2 * f / Math.sqrt(k));
 }
 window.addEventListener("resize", () => { clearTimeout(window.__rz); window.__rz = setTimeout(sizeLabels, 150); });
-function __noop(){
-}
 
 /* ---------- lists ---------- */
 let filter = "all", query = "", limit = 150;
@@ -741,6 +739,24 @@ $("#importBtn").onclick = openImport; $("#importBtn2").onclick = openImport;
 $("#chooseFile").onclick = () => $("#file").click();
 document.querySelectorAll("dialog [data-close]").forEach(b => b.onclick = () => b.closest("dialog").close());
 
+// Clicking a book's country button opens the editor for that book's author.
+let editIdx = -1;
+$("#blist").addEventListener("click", e => {
+  const btn = e.target.closest("button.ctry[data-i]"); if (!btn) return;
+  editIdx = +btn.dataset.i;
+  const book = store.books[editIdx]; if (!book) return;
+  const a = store.authors[norm(book.a)] || {};
+  $("#eName").textContent = book.a;
+  $("#eNote").textContent =
+    a.s === "a" ? `Found on Wikidata${a.note ? `: ${a.note}` : ""}.` :
+    a.s === "m" ? "You set this country." :
+    a.s === "p" ? "Not looked up yet." :
+    "Couldn't be found automatically. Type or pick a country.";
+  $("#eCountry").value = a.c || "";
+  $("#editErr").textContent = "";
+  $("#editDlg").showModal();
+  $("#eCountry").focus();
+});
 $("#eSave").onclick = () => {
   const book = store.books[editIdx]; if (!book) return;
   const raw = $("#eCountry").value; const ak = norm(book.a);
