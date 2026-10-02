@@ -12,7 +12,7 @@ const ROOT = path.join(__dirname, "..");
 const WD = "https://query.wikidata.org/sparql";
 const UA = "BookMap/1.0 (popular books data script)";
 const MIN_LINKS = 5;       // books covered by fewer Wikipedias than this are skipped
-const PER_COUNTRY = 10;
+const PER_COUNTRY = 20;    // the page shows 10, after dropping any you've read
 const PER_AUTHOR = 2;      // so one prolific author doesn't fill a country's list
 // Kinds of work to include: literary work, book, written work, novel.
 const CLASSES = ["Q7725634", "Q571", "Q47461344", "Q8261"];

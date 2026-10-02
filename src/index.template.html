@@ -93,6 +93,7 @@ h3 .linkbtn{font-family:var(--body);font-weight:400}
 .bt{font-style:italic;overflow-wrap:anywhere}
 .ba{font-size:.88rem;color:var(--muted)}
 .blist li.intro{display:block;color:var(--muted);font-size:.9rem}
+.suggest{margin-top:28px}
 .rank{font-family:var(--display);font-size:.85rem;color:var(--muted);min-width:1.5em;text-align:right}
 .ctry{border:1px dashed var(--line);background:none;border-radius:8px;padding:.25em .6em;font-family:var(--display);font-size:.85rem;cursor:pointer;white-space:nowrap;max-width:190px;overflow:hidden;text-overflow:ellipsis}
 .ctry.set{border-style:solid}
@@ -172,6 +173,10 @@ dialog ol{margin:0 0 14px;padding-left:1.2em;color:var(--muted);font-size:.93rem
       </div>
       <ul class="blist" id="blist"></ul>
       <button class="btn more" id="moreBtn" hidden>Show more</button>
+      <div class="suggest" id="suggest" hidden>
+        <h3 id="suggestHead">Books to read</h3>
+        <ul class="blist" id="slist"></ul>
+      </div>
     </section>
   </div>
 
@@ -661,7 +666,7 @@ function renderBooks(){
   const ul = $("#blist");
   if (!items.length){
     ul.innerHTML = `<li class="muted">${store.books.length ? (filter === "need" ? "Every book has a country." : "No books match.") : "No books yet. Import your library to begin."}</li>`;
-    $("#moreBtn").hidden = true; return;
+    $("#moreBtn").hidden = true; renderMoreToRead(); return;
   }
   ul.innerHTML = items.slice(0, limit).map(({ b, i, a }) => {
     let label, cls;
@@ -672,22 +677,47 @@ function renderBooks(){
   }).join("");
   $("#moreBtn").hidden = items.length <= limit;
   $("#moreBtn").textContent = `Show more (${items.length - limit} left)`;
+  renderMoreToRead();
+}
+// Best-known books from a country, leaving out any already read (matched by title).
+function titleKey(t){
+  return String(t || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/\(.*?\)/g, "").split(":")[0].replace(/[^\p{L}\p{N}]+/gu, " ").trim().replace(/^(the|a|an) /, "");
+}
+function suggestionsFor(country){
+  const read = new Set(store.books.map(b => titleKey(b.t)));
+  let list = (POPULAR[country] || []).filter(b => !read.has(titleKey(b[0]))).slice(0, 10)
+    .map((b, i) => ({ t: b[0], a: b[1], y: b[2], r: i + 1 }));
+  if (query){ const q = query.toLowerCase(); list = list.filter(x => x.t.toLowerCase().includes(q) || x.a.toLowerCase().includes(q)); }
+  return list;
+}
+function suggestionItems(list){
+  return list.map(x => `<li><div><div class="bt">${esc(x.t)}</div><div class="ba">${esc(x.a)}${x.y ? ` · ${x.y < 0 ? -x.y + " BC" : x.y}` : ""}</div></div><span class="rank">${x.r}</span></li>`).join("");
+}
+const RANK_NOTE = "ranked by how many languages Wikipedia covers them in";
+// Below your books from the selected country: its best-known books you haven't read.
+function renderMoreToRead(){
+  const box = $("#suggest");
+  const list = selected && counts.get(selected) ? suggestionsFor(selected) : [];
+  box.hidden = !list.length;
+  if (!list.length) return;
+  $("#suggestHead").textContent = `Books to read from ${selected}`;
+  $("#slist").innerHTML = `<li class="intro">Its best-known books you haven't read yet, ${RANK_NOTE}.</li>` + suggestionItems(list);
 }
 // A country you haven't read from yet: show its best-known books instead.
 function renderSuggestions(){
   $("#bookHead").textContent = `Books to read from ${selected}`;
   $("#clearSel").hidden = false;
   $("#moreBtn").hidden = true;
-  let list = (POPULAR[selected] || []).map((b, i) => ({ t: b[0], a: b[1], y: b[2], r: i + 1 }));
-  if (query){ const q = query.toLowerCase(); list = list.filter(x => x.t.toLowerCase().includes(q) || x.a.toLowerCase().includes(q)); }
+  $("#suggest").hidden = true;
   const ul = $("#blist");
   if (!POPULAR[selected]){
     ul.innerHTML = `<li class="intro">You haven't read any books from ${esc(selected)} yet, and we don't have suggestions for it.</li>`;
     return;
   }
-  ul.innerHTML = `<li class="intro">You haven't read any books from ${esc(selected)} yet. These are its best-known books, ranked by how many languages Wikipedia covers them in.</li>` +
-    (list.length ? list.map(x => `<li><div><div class="bt">${esc(x.t)}</div><div class="ba">${esc(x.a)}${x.y ? ` · ${x.y < 0 ? -x.y + " BC" : x.y}` : ""}</div></div><span class="rank">${x.r}</span></li>`).join("")
-      : `<li class="muted">No books match.</li>`);
+  const list = suggestionsFor(selected);
+  ul.innerHTML = `<li class="intro">You haven't read any books from ${esc(selected)} yet. These are its best-known books, ${RANK_NOTE}.</li>` +
+    (list.length ? suggestionItems(list) : `<li class="muted">No books match.</li>`);
 }
 function renderAll(){
   computeCounts();
