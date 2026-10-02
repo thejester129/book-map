@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "bookmap", "runtimeExecutable": "./start.sh", "runtimeArgs": [], "port": 8000 }
+  ]
+}

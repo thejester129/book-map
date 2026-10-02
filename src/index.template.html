@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BookMap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#121715; --sea:#161D20; --ink:#E6EAE6; --muted:#9AA49F; --land:#2B312F; --line:#3A423F;
+  --panel:#1A201E; --accent:#8FCB7A; --accent-ink:#0F1A12; --focus:#7FB2F5;
+  --s1:#D4BC3A; --s2:#B0BE3E; --s3:#84BF4C; --s4:#5CC764; --s5:#3BD487; --sel:#F2F5F0;
+  --display:"Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body:"Literata", Georgia, "Times New Roman", serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:1rem;line-height:1.55;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.wrap{max-width:1240px;margin:0 auto;padding:0 clamp(16px,3vw,32px)}
+
+header.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 0 6px;flex-wrap:wrap}
+.brand{font-family:var(--display);font-weight:700;font-size:1.05rem;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.brand svg{width:22px;height:22px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:transparent;border-radius:999px;padding:.5em 1.05em;cursor:pointer;font-family:var(--display);font-weight:500;font-size:.92rem;line-height:1.2}
+.btn:hover{border-color:var(--ink)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn[disabled]{opacity:.5;cursor:default}
+dialog a{color:var(--accent);text-underline-offset:3px}
+.linkbtn{background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px;color:var(--muted);font-size:.9rem}
+
+.hero{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:16px 32px;padding:18px 0 8px}
+.big{font-family:var(--display);font-weight:800;font-size:clamp(3rem,9vw,7.2rem);line-height:.88;letter-spacing:-.045em;margin:0;font-variant-numeric:tabular-nums}
+.big small{display:block;font-size:.32em;font-weight:500;letter-spacing:-.015em;line-height:1.15;margin-top:.35em;color:var(--muted)}
+.hero p{margin:0;max-width:38ch;color:var(--muted)}
+.statline{font-family:var(--display);font-size:1.05rem;text-align:right;color:var(--muted)}
+.statline b{color:var(--ink);font-weight:700}
+.legend{display:flex;align-items:center;gap:4px;justify-content:flex-end;margin-top:8px;font-size:.78rem;color:var(--muted);font-family:var(--display)}
+.legend i{display:inline-block;width:22px;height:10px;border-radius:2px}
+
+.mapbox{position:relative;background:var(--sea);border-radius:18px;overflow:hidden;margin-top:10px;touch-action:none}
+.mapbox svg{display:block;width:100%;height:auto;cursor:grab}
+.mapbox svg:active{cursor:grabbing}
+.country{stroke:var(--paper);stroke-width:.6;vector-effect:non-scaling-stroke;transition:fill .25s}
+.country{cursor:pointer}
+.country.sel,.dot.sel{filter:brightness(1.18) saturate(1.1);stroke:var(--sel);stroke-width:1.4}
+.lbl.sel{fill:var(--paper);stroke:var(--sel)}
+.lbl{font-family:var(--display);font-weight:800;fill:var(--ink);paint-order:stroke;stroke:var(--paper);stroke-linejoin:round;pointer-events:none;text-anchor:middle;dominant-baseline:central}
+.dot{stroke:var(--paper);vector-effect:non-scaling-stroke;stroke-width:1}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--paper);padding:6px 10px;border-radius:8px;font-family:var(--display);font-size:.85rem;white-space:nowrap;transform:translate(-50%,calc(-100% - 12px));opacity:0;transition:opacity .12s}
+.zoom{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:6px}
+.zoom button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-family:var(--display);font-size:1.1rem;line-height:1}
+.empty-map{position:absolute;inset:0;display:grid;place-items:center;padding:20px;text-align:center;pointer-events:none}
+.empty-map div{background:var(--panel);padding:20px 24px;border-radius:14px;max-width:440px;pointer-events:auto;box-shadow:0 1px 0 var(--line)}
+.empty-map h2{font-family:var(--display);font-size:1.3rem;margin:0 0 6px;letter-spacing:-.01em}
+.empty-map p{margin:0 0 14px;color:var(--muted);font-size:.95rem}
+.empty-map .actions{justify-content:center}
+
+.status{min-height:1.6em;margin:12px 0 0;font-family:var(--display);font-size:.92rem;color:var(--muted);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.bar{flex:0 0 160px;height:6px;border-radius:3px;background:var(--land);overflow:hidden}
+.bar span{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
+
+.cols{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:28px;margin:28px 0 48px}
+h3{font-family:var(--display);font-size:1.25rem;letter-spacing:-.015em;margin:0 0 10px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+h3 .linkbtn{font-family:var(--body);font-weight:400}
+.clist{list-style:none;margin:0;padding:0;max-height:560px;overflow:auto}
+.clist li button{width:100%;display:grid;grid-template-columns:minmax(0,1fr) 90px 2.6em;gap:10px;align-items:center;background:none;border:0;border-bottom:1px solid var(--line);padding:9px 2px;text-align:left;cursor:pointer}
+.clist li button:hover .cn{text-decoration:underline;text-underline-offset:3px}
+.clist li button.on{background:color-mix(in srgb, var(--sel) 14%, transparent);box-shadow:inset 3px 0 0 var(--sel)}
+.clist li button.on .cn{color:var(--sel);font-weight:600}
+.cn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cb{height:8px;border-radius:4px;background:var(--land);overflow:hidden}
+.cb i{display:block;height:100%}
+.cc{font-family:var(--display);font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.chip{border:1px solid var(--line);background:none;border-radius:999px;padding:.3em .85em;font-family:var(--display);font-size:.85rem;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.search{flex:1 1 180px;min-width:0;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:.35em .9em;font-size:.92rem}
+.blist{list-style:none;margin:0;padding:0}
+.blist li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 2px;border-bottom:1px solid var(--line);align-items:center}
+.bt{font-style:italic;overflow-wrap:anywhere}
+.ba{font-size:.88rem;color:var(--muted)}
+.blist li.intro{display:block;color:var(--muted);font-size:.9rem}
+.rank{font-family:var(--display);font-size:.85rem;color:var(--muted);min-width:1.5em;text-align:right}
+.ctry{border:1px dashed var(--line);background:none;border-radius:8px;padding:.25em .6em;font-family:var(--display);font-size:.85rem;cursor:pointer;white-space:nowrap;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.ctry.set{border-style:solid}
+.ctry.need{border-color:var(--accent);color:var(--accent)}
+.more{margin-top:12px}
+
+dialog{border:0;border-radius:16px;padding:22px;background:var(--panel);color:var(--ink);width:min(440px,calc(100vw - 32px));box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(10,14,12,.45)}
+dialog h2{font-family:var(--display);margin:0 0 4px;font-size:1.3rem;letter-spacing:-.01em}
+dialog p{margin:0 0 14px;color:var(--muted);font-size:.93rem}
+dialog label{display:block;font-family:var(--display);font-size:.85rem;margin:10px 0 4px}
+dialog input[type=text]{width:100%;border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:.55em .75em}
+dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+dialog ol{margin:0 0 14px;padding-left:1.2em;color:var(--muted);font-size:.93rem}
+.note{font-size:.85rem;color:var(--muted);margin-top:6px}
+.err{color:var(--accent)}
+.foot{border-top:1px solid var(--line);padding:16px 0 28px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.seg button{border:0;background:none;padding:.3em .8em;font-family:var(--display);font-size:.82rem;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+
+@media (max-width:820px){
+  .hero{grid-template-columns:1fr}
+  .statline,.legend{text-align:left;justify-content:flex-start}
+  .cols{grid-template-columns:1fr}
+  .clist{max-height:320px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 7.5c2-.6 3.6-.2 5 1v9c-1.4-1.2-3-1.6-5-1z M17 7.5c-2-.6-3.6-.2-5 1v9c1.4-1.2 3-1.6 5-1z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      BookMap
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="importBtn">Import library</button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1 class="big" id="bigCount">0 countries<small id="bigSub">Your reading, mapped by where its authors come from.</small></h1>
+    <div>
+      <div class="statline" id="statline"></div>
+      <div class="legend" id="legend" aria-label="Colour scale"></div>
+    </div>
+  </section>
+
+  <div class="mapbox" id="mapbox">
+    <svg id="map" viewBox="0 0 1000 500" role="img" aria-label="BookMap world map of countries you have read"></svg>
+    <div class="tip" id="tip"></div>
+    <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">&minus;</button></div>
+    <div class="empty-map" id="emptyMap">
+      <div>
+        <h2>Start with the books you've read</h2>
+        <p>Import an export from Goodreads, StoryGraph or any CSV with titles and authors. BookMap looks up where each author is from on Wikidata, and you can correct anything it gets wrong.</p>
+        <div class="actions"><button class="btn primary" id="importBtn2">Import library</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="status" aria-live="polite"></div>
+
+  <div class="cols">
+    <section>
+      <h3>Countries <span class="seg" role="group" aria-label="Count by"><button data-cb="books" aria-pressed="true">Books</button><button data-cb="authors" aria-pressed="false">Authors</button></span></h3>
+      <ul class="clist" id="clist"></ul>
+    </section>
+    <section>
+      <h3><span id="bookHead">Books</span><button class="linkbtn" id="clearSel" hidden>Show all books</button></h3>
+      <div class="filters">
+        <button class="chip" id="fAll" aria-pressed="true">All</button>
+        <button class="chip" id="fNeed" aria-pressed="false">Needs a country</button>
+        <input class="search" id="q" type="search" placeholder="Search titles or authors" aria-label="Search titles or authors">
+      </div>
+      <ul class="blist" id="blist"></ul>
+      <button class="btn more" id="moreBtn" hidden>Show more</button>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <span id="sync">Saved on this device</span>
+    <span><button class="linkbtn" id="exportBtn">Export as CSV</button> &nbsp; <button class="linkbtn" id="resetBtn">Clear library</button></span>
+  </footer>
+</div>
+
+<datalist id="countryList"></datalist>
+<input type="file" id="file" accept=".csv,text/csv" hidden>
+
+<dialog id="importDlg">
+  <h2>Import your library</h2>
+  <p>Both sites give you a CSV file. Only books marked as read are imported, and duplicates are skipped.</p>
+  <ol>
+    <li><b>Goodreads:</b> open <a href="https://www.goodreads.com/review/import" target="_blank" rel="noopener">Import and export</a> and choose Export library. (Or My Books, then Import and export.)</li>
+    <li><b>StoryGraph:</b> open <a href="https://app.thestorygraph.com/user-export" target="_blank" rel="noopener">Export StoryGraph library</a> and generate the export. (Or your profile, then Manage account.)</li>
+    <li>Any other CSV with a title and an author column also works.</li>
+  </ol>
+  <div class="row"><button class="btn" data-close>Cancel</button><button class="btn primary" id="chooseFile">Choose CSV file</button></div>
+</dialog>
+
+<dialog id="editDlg">
+  <h2 id="eName">Author</h2>
+  <p id="eNote"></p>
+  <label for="eCountry">Country</label><input type="text" id="eCountry" list="countryList" autocomplete="off">
+  <div class="note">This applies to every book by this author.</div>
+  <div class="note err" id="editErr"></div>
+  <div class="row"><button class="btn" id="eRemove">Remove this book</button><span style="flex:1"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="eSave">Save country</button></div>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script>
+const TOPO = __TOPO__;
+// Best-known books per country: { country: [[title, authors, year], …] }. See scripts/fetch-popular.js.
+const POPULAR = __POPULAR__;
+</script>
+<script>
+(function(){
+"use strict";
+const $ = s => document.querySelector(s);
+
+/* ---------- geography ---------- */
+const allFeatures = topojson.feature(TOPO, TOPO.objects.countries).features.filter(f => f.properties.name);
+const features = allFeatures.filter(f => f.properties.name !== "Antarctica");
+const NAMES = [...new Set(allFeatures.map(f => f.properties.name))].sort((a,b)=>a.localeCompare(b));
+const NAMESET = new Set(NAMES);
+const LOWER = new Map(NAMES.map(n => [n.toLowerCase(), n]));
+const ALIAS = {
+  "usa":"United States","us":"United States","u.s.":"United States","united states of america":"United States","america":"United States",
+  "uk":"United Kingdom","u.k.":"United Kingdom","england":"United Kingdom","scotland":"United Kingdom","wales":"United Kingdom","northern ireland":"United Kingdom","great britain":"United Kingdom","britain":"United Kingdom",
+  "russian federation":"Russia","soviet union":"Russia","ussr":"Russia","czech republic":"Czechia","ivory coast":"Côte d'Ivoire","cote d'ivoire":"Côte d'Ivoire",
+  "democratic republic of the congo":"DR Congo","drc":"DR Congo","republic of the congo":"Congo","swaziland":"Eswatini","burma":"Myanmar","east timor":"Timor-Leste",
+  "cape verde":"Cabo Verde","korea":"South Korea","republic of korea":"South Korea","holland":"Netherlands","the netherlands":"Netherlands","persia":"Iran",
+  "macedonia":"North Macedonia","vatican city":"Vatican","holy see":"Vatican","sao tome and principe":"São Tomé and Principe","bosnia":"Bosnia and Herzegovina",
+  "the bahamas":"Bahamas","the gambia":"Gambia","trinidad":"Trinidad and Tobago","st lucia":"Saint Lucia","st. lucia":"Saint Lucia","palestinian territories":"Palestine",
+  "republic of ireland":"Ireland",
+  "kingdom of england":"United Kingdom","kingdom of scotland":"United Kingdom","kingdom of great britain":"United Kingdom","united kingdom of great britain and ireland":"United Kingdom",
+  "russian empire":"Russia","people's republic of china":"China","kingdom of the netherlands":"Netherlands","kingdom of denmark":"Denmark","empire of japan":"Japan",
+  "german reich":"Germany","german empire":"Germany","weimar republic":"Germany","nazi germany":"Germany","kingdom of prussia":"Germany","kingdom of italy":"Italy","türkiye":"Turkey","turkiye":"Turkey","uae":"United Arab Emirates","prussia":"Germany","west germany":"Germany","east germany":"Germany"
+};
+function matchCountry(s){
+  if (!s || typeof s !== "string") return null;
+  const t = s.trim(); if (!t) return null;
+  if (NAMESET.has(t)) return t;
+  const l = t.toLowerCase();
+  if (LOWER.has(l)) return LOWER.get(l);
+  if (ALIAS[l] && NAMESET.has(ALIAS[l])) return ALIAS[l];
+  return null;
+}
+$("#countryList").innerHTML = NAMES.map(n => `<option value="${esc(n)}">`).join("");
+const TOTAL = 195;
+
+/* ---------- state ---------- */
+const LS = "bookmap-v1", LS_OLD = "shelf-atlas-v1";
+let store = { books: [], authors: {}, settings: { countBy: "books" } };
+// book: {t,a,d,k}  author entry keyed by norm(name): {n, c, s:'p'|'a'|'m'|'u', note}
+function norm(a){ return String(a||"").normalize("NFKC").replace(/\s+/g," ").trim().toLowerCase(); }
+function bookKey(t,a){ return (norm(t)+"|"+norm(a)); }
+function esc(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+function lsLoad(){
+  try { const r = localStorage.getItem(LS) || localStorage.getItem(LS_OLD); if (r){ const d = JSON.parse(r); if (d && Array.isArray(d.books)) store = Object.assign(store, d); } } catch(e){}
+}
+function lsSave(){ try { localStorage.setItem(LS, JSON.stringify(store)); } catch(e){} }
+
+/* ---------- account storage (db) ---------- */
+let db = null, base = null, lastChunks = 0;
+const written = new Map();
+const CH = 600;
+async function connect(){
+  if (!window.claude || !window.claude.use) return;
+  try {
+    const [d, u] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+    if (!d || !u) return;
+    const id = await u.id(); if (!id) return;
+    base = "data/users/" + id;
+    const meta = await d.doc(base + "/meta").get();
+    db = d;
+    if (meta.exists){
+      const m = JSON.parse(JSON.stringify(meta.data()));
+      const aSnap = await d.doc(base + "/authors").get();
+      const books = [];
+      for (let i = 0; i < (m.chunks || 0); i++){
+        const s = await d.doc(base + "/books-" + i).get();
+        if (s.exists){ const items = (s.data().items || []); books.push(...JSON.parse(JSON.stringify(items))); written.set("books-"+i, JSON.stringify(items)); }
+      }
+      lastChunks = m.chunks || 0;
+      const authors = aSnap.exists ? JSON.parse(JSON.stringify(aSnap.data().map || {})) : {};
+      written.set("authors", JSON.stringify(authors));
+      store = { books, authors, settings: Object.assign({countBy:"books"}, m.settings || {}) };
+      lsSave(); renderAll();
+    } else if (store.books.length){
+      dbSave();
+    }
+    setSync("Saved to your Claude account");
+  } catch(e){ db = null; }
+}
+let saveTimer = null, saving = false, again = false;
+function scheduleSave(){
+  lsSave();
+  if (!db) return;
+  clearTimeout(saveTimer); saveTimer = setTimeout(dbSave, 800);
+}
+async function writeIfChanged(key, body){
+  const s = JSON.stringify(body.items ?? body.map ?? body);
+  if (written.get(key) === s) return;
+  await db.doc(base + "/" + key).set(body);
+  written.set(key, s);
+}
+async function dbSave(){
+  if (!db) return;
+  if (saving){ again = true; return; }
+  saving = true; setSync("Saving…");
+  try {
+    const n = Math.ceil(store.books.length / CH);
+    for (let i = 0; i < n; i++) await writeIfChanged("books-" + i, { items: store.books.slice(i*CH, (i+1)*CH) });
+    for (let i = n; i < lastChunks; i++){ await db.doc(base + "/books-" + i).delete(); written.delete("books-"+i); }
+    await writeIfChanged("authors", { map: store.authors });
+    await db.doc(base + "/meta").set({ chunks: n, settings: store.settings, v: 1 });
+    lastChunks = n;
+    setSync("Saved to your Claude account");
+  } catch(e){
+    setSync(e && e.code === "quota_exceeded" ? "Your library is too large to save to your account; it is kept on this device." : "Couldn't save to your account just now; it is kept on this device.");
+  }
+  saving = false;
+  if (again){ again = false; dbSave(); }
+}
+function setSync(t){ $("#sync").textContent = t; }
+
+/* ---------- Wikidata lookup ---------- */
+// Free and keyless: query.wikidata.org allows cross-origin requests from any site.
+const WD = "https://query.wikidata.org/sparql";
+// Occupations that count as "writer" when several people share a name.
+const WRITER_OCC = "wd:Q36180 wd:Q482980 wd:Q6625963 wd:Q49757 wd:Q214917 wd:Q11774202 wd:Q1930187 wd:Q4853732 wd:Q18844224 wd:Q15949613 wd:Q15980158 wd:Q201788 wd:Q4964182 wd:Q28389";
+// Name spellings to try: "J.R.R. Tolkien" is stored as "J. R. R. Tolkien", and the reverse.
+function nameVariants(n){
+  const t = n.replace(/\s+/g, " ").trim();
+  return [...new Set([t, t.replace(/\.(?=\S)/g, ". "), t.replace(/\.\s+(?=\p{Lu}\.)/gu, ".")])];
+}
+// Nationality words ("Irish", "South African") for each country, fetched once from Wikidata.
+const DEMONYM_EXTRA = { "english":"United Kingdom", "scottish":"United Kingdom", "welsh":"United Kingdom", "northern irish":"United Kingdom",
+  "czech":"Czechia", "bohemian":"Czechia", "prussian":"Germany", "soviet":"Russia" };
+let demonymsPromise = null;
+function loadDemonyms(){
+  return demonymsPromise ||= (async () => {
+    const query = `SELECT ?cLabel ?dem WHERE {
+  { ?c wdt:P31 wd:Q6256 } UNION { ?c wdt:P31 wd:Q3624078 }
+  ?c wdt:P1549 ?dem FILTER(LANG(?dem) = "en")
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". ?c rdfs:label ?cLabel }
+}`;
+    const map = new Map(Object.entries(DEMONYM_EXTRA).map(([d, c]) => [d, new Set([c])]));
+    try {
+      const res = await fetch(WD, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/sparql-results+json" }, body: "query=" + encodeURIComponent(query) });
+      for (const r of (await res.json()).results.bindings){
+        const c = matchCountry(r.cLabel.value), d = r.dem.value.toLowerCase();
+        if (!c || d === r.cLabel.value.toLowerCase()) continue;
+        if (!map.has(d)) map.set(d, new Set());
+        map.get(d).add(c);
+      }
+    } catch(e){ demonymsPromise = null; }
+    return map;
+  })();
+}
+// The first nationality in a description such as "Indian-born English novelist" (gives United Kingdom).
+function descCountries(desc, demonyms){
+  const t = desc.toLowerCase();
+  let best = null;
+  for (const [d, cs] of demonyms){
+    const re = new RegExp(`(^|[^\\p{L}])${d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}]|-born)`, "gu");
+    const m = re.exec(t); if (!m) continue;
+    const at = m.index + m[1].length;
+    if (!best || at < best.at || (at === best.at && d.length > best.len)) best = { at, len: d.length, cs };
+  }
+  return best ? best.cs : new Set();
+}
+const sparqlStr = s => '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+async function wikidataLookup(authors){
+  const byName = new Map();
+  for (const a of authors) for (const v of nameVariants(a.n)) { if (!byName.has(v)) byName.set(v, []); byName.get(v).push(a); }
+  const vals = [...byName.keys()].flatMap(v => [sparqlStr(v) + "@en", sparqlStr(v) + "@mul"]).join(" ");
+  const query = `SELECT ?name ?person ?links ?writer ?desc ?citLabel ?ended ?bcLabel ?dcLabel ?wlLabel WHERE {
+  VALUES ?name { ${vals} }
+  { ?person rdfs:label ?name } UNION { ?person skos:altLabel ?name }
+  ?person wdt:P31 wd:Q5 .
+  OPTIONAL { ?person wikibase:sitelinks ?links }
+  BIND(EXISTS { ?person wdt:P106/wdt:P279? ?o . VALUES ?o { ${WRITER_OCC} } } AS ?writer)
+  OPTIONAL { ?person schema:description ?desc FILTER(LANG(?desc) = "en") }
+  OPTIONAL { ?person p:P27 ?cs . ?cs ps:P27 ?cit . BIND(EXISTS { ?cs pq:P582 ?e } AS ?ended) }
+  OPTIONAL { ?person wdt:P19/wdt:P17 ?bc }
+  OPTIONAL { ?person wdt:P20/wdt:P17 ?dc }
+  OPTIONAL { ?person wdt:P937/wdt:P17 ?wl }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+}`;
+  const res = await fetch(WD, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/sparql-results+json" },
+    body: "query=" + encodeURIComponent(query)
+  });
+  if (!res.ok){ const e = new Error("Wikidata " + res.status); e.code = res.status === 429 ? "rate_limited" : "failed"; throw e; }
+  const rows = (await res.json()).results.bindings;
+  // Group rows into candidate people per author.
+  const cands = new Map();
+  for (const r of rows){
+    for (const a of byName.get(r.name.value) || []){
+      if (!cands.has(a)) cands.set(a, new Map());
+      const id = r.person.value;
+      const m = cands.get(a);
+      if (!m.has(id)) m.set(id, { links: +(r.links?.value || 0), writer: r.writer?.value === "true", desc: r.desc?.value || "", from: new Set(), now: new Set(), old: new Set(), born: new Set(), died: new Set(), worked: new Set() });
+      const c = m.get(id);
+      const cit = matchCountry(r.citLabel?.value);
+      if (cit) (r.ended?.value === "true" ? c.old : c.now).add(cit);
+      for (const [k, set] of [["bcLabel", c.born], ["dcLabel", c.died], ["wlLabel", c.worked]]){
+        const x = matchCountry(r[k]?.value); if (x) set.add(x);
+      }
+    }
+  }
+  const demonyms = await loadDemonyms();
+  const out = new Map();
+  for (const [a, m] of cands){
+    // Prefer writers, then the best-known person (most Wikipedia articles).
+    const best = [...m.values()].sort((x, y) => (y.writer - x.writer) || (y.links - x.links))[0];
+    if (!best.writer) continue;
+    best.from = descCountries(best.desc, demonyms);
+    const c = pickCountry(best);
+    if (c) out.set(a, { c, note: best.desc.slice(0, 80) });
+  }
+  return out;
+}
+
+// Scores each country linked to a person. Citizenship and the nationality in their
+// Wikidata description ("Irish novelist") count most; an ended citizenship (often just
+// ended by death) counts in full unless they hold a current one. Where they worked, died
+// and were born each add a point. Ties go to the stronger citizenship.
+function pickCountry(p){
+  const score = new Map(), cit = new Map();
+  const add = (c, n) => score.set(c, (score.get(c) || 0) + n);
+  for (const c of p.old) cit.set(c, p.now.size ? 2 : 3);
+  for (const c of p.now) cit.set(c, 3);
+  for (const [c, n] of cit) add(c, n);
+  for (const c of p.from) add(c, 3);
+  for (const set of [p.worked, p.died, p.born]) for (const c of set) add(c, 1);
+  return [...score].sort((x, y) => (y[1] - x[1]) || ((cit.get(y[0]) || 0) - (cit.get(x[0]) || 0)))[0]?.[0] || null;
+}
+
+let looking = false;
+async function findCountries(){
+  if (looking) return;
+  const pending = Object.values(store.authors).filter(a => a.s === "p");
+  if (!pending.length) { renderAll(); return; }
+  looking = true;
+  const B = 40; let done = 0, stopped = null;
+  for (let i = 0; i < pending.length && !stopped; i += B){
+    const batch = pending.slice(i, i + B);
+    status(`Looking up where your authors are from: ${done} of ${pending.length}`, done / pending.length);
+    try {
+      const found = await wikidataLookup(batch);
+      for (const a of batch){
+        const r = found.get(a);
+        a.c = r ? r.c : null; a.s = r ? "a" : "u"; a.note = r ? r.note : "";
+      }
+    } catch(e){
+      stopped = e && e.code === "rate_limited"
+        ? "Lookups are paused for a moment. Try again in a minute."
+        : "The lookup stopped partway. Check your connection and try again to continue where it left off.";
+    }
+    done = Math.min(pending.length, i + B);
+    renderAll(); scheduleSave();
+  }
+  looking = false;
+  const left = Object.values(store.authors).filter(a => a.s === "p").length;
+  const unknown = Object.values(store.authors).filter(a => a.s === "u").length;
+  if (stopped) status(stopped, null, left ? "Try again" : null);
+  else status(unknown ? `Done. ${unknown} author${unknown>1?"s":""} couldn't be placed; filter by “Needs a country” to set them.` : "Done. Every author has a country.");
+  renderAll();
+}
+function status(text, frac, actionLabel){
+  const el = $("#status"); el.innerHTML = "";
+  const s = document.createElement("span"); s.textContent = text; el.appendChild(s);
+  if (frac != null){ const b = document.createElement("span"); b.className = "bar"; b.innerHTML = `<span style="width:${Math.round(frac*100)}%"></span>`; el.appendChild(b); }
+  if (actionLabel){ const b = document.createElement("button"); b.className = "btn"; b.textContent = actionLabel; b.onclick = findCountries; el.appendChild(b); }
+}
+
+/* ---------- import ---------- */
+function addBook(t, a, d){
+  t = String(t||"").trim(); a = String(a||"").replace(/\s+/g," ").trim();
+  if (!t || !a) return false;
+  const k = bookKey(t, a);
+  if (store.books.some(b => b.k === k)) return false;
+  store.books.push({ t, a, d: d || "", k });
+  const ak = norm(a);
+  if (!store.authors[ak]) store.authors[ak] = { n: a, c: null, s: "p", note: "" };
+  return true;
+}
+function importRows(rows, fields){
+  const has = f => fields.includes(f);
+  let kind = "generic";
+  if (has("Exclusive Shelf") && has("Author")) kind = "goodreads";
+  else if (has("Read Status") && has("Authors")) kind = "storygraph";
+  const titleCol = fields.find(f => /^title$/i.test(f)) || fields.find(f => /title/i.test(f));
+  const authorCol = kind === "storygraph" ? "Authors" : (fields.find(f => /^author$/i.test(f)) || fields.find(f => /^authors?$/i.test(f)) || fields.find(f => /author/i.test(f)));
+  if (!titleCol || !authorCol) return { error: "This file needs a title column and an author column." };
+  let added = 0, skipped = 0, dup = 0;
+  for (const r of rows){
+    if (kind === "goodreads" && String(r["Exclusive Shelf"]).trim() !== "read") { skipped++; continue; }
+    if (kind === "storygraph" && String(r["Read Status"]).trim().toLowerCase() !== "read") { skipped++; continue; }
+    let a = String(r[authorCol] || "");
+    if (kind === "storygraph") a = a.split(",")[0];
+    const d = r["Date Read"] || r["Last Date Read"] || "";
+    if (addBook(r[titleCol], a, d)) added++; else dup++;
+  }
+  return { added, skipped, dup, kind };
+}
+$("#file").addEventListener("change", e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  $("#importDlg").close();
+  status("Reading your file…");
+  Papa.parse(f, { header: true, skipEmptyLines: true, complete: res => {
+    const r = importRows(res.data, res.meta.fields || []);
+    if (r.error){ status(r.error); return; }
+    renderAll(); scheduleSave();
+    const src = r.kind === "goodreads" ? "Goodreads" : r.kind === "storygraph" ? "StoryGraph" : "your file";
+    status(`Imported ${r.added} read book${r.added===1?"":"s"} from ${src}` + (r.skipped ? `, skipping ${r.skipped} on other shelves` : "") + (r.dup ? ` and ${r.dup} already in your library` : "") + ".");
+    if (r.added) setTimeout(findCountries, 400);
+  }, error: () => status("That file couldn't be read. Check it's a CSV export and try again.") });
+});
+
+/* ---------- map ---------- */
+const W = 1000, H = 500;
+const svg = d3.select("#map");
+const projection = d3.geoEqualEarth().fitExtent([[8, 8], [W - 8, H - 8]], { type: "FeatureCollection", features });
+const path = d3.geoPath(projection);
+const gRoot = svg.append("g");
+const gLand = gRoot.append("g");
+const gDots = gRoot.append("g");
+const gLbl = gRoot.append("g");
+let k = 1, selected = null;
+
+function anchorOf(f){
+  let g = f.geometry;
+  if (g.type === "MultiPolygon"){
+    let best = null, ba = -1;
+    for (const c of g.coordinates){ const p = { type: "Polygon", coordinates: c }; const a = d3.geoArea(p); if (a > ba){ ba = a; best = p; } }
+    g = best;
+  }
+  return path.centroid(g);
+}
+const byName = d3.group(features, f => f.properties.name);
+const ANCHOR = new Map(), AREA = new Map();
+for (const [n, fs] of byName){
+  const main = fs.reduce((a, b) => d3.geoArea(a) > d3.geoArea(b) ? a : b);
+  ANCHOR.set(n, anchorOf(main));
+  AREA.set(n, d3.sum(fs, f => path.area(f)));
+}
+const paths = gLand.selectAll("path").data(features).join("path")
+  .attr("class", "country").attr("d", path)
+  .on("mousemove", (ev, f) => showTip(ev, f.properties.name))
+  .on("mouseleave", hideTip)
+  .on("click", (ev, f) => { const n = f.properties.name; selectCountry(selected === n ? null : n); });
+
+const zoom = d3.zoom().scaleExtent([1, 12]).translateExtent([[0, 0], [W, H]])
+  .on("zoom", ev => { k = ev.transform.k; gRoot.attr("transform", ev.transform); sizeLabels(); });
+svg.call(zoom).on("dblclick.zoom", null);
+$("#zin").onclick = () => svg.transition().duration(250).call(zoom.scaleBy, 1.6);
+$("#zout").onclick = () => svg.transition().duration(250).call(zoom.scaleBy, 1/1.6);
+
+const tip = $("#tip");
+function showTip(ev, n){
+  const box = $("#mapbox").getBoundingClientRect();
+  const c = counts.get(n) || 0;
+  const unit = store.settings.countBy === "authors" ? "author" : "book";
+  tip.textContent = `${n}: ${c ? c + " " + unit + (c === 1 ? "" : "s") : "none yet, click for books to read"}`;
+  tip.style.left = (ev.clientX - box.left) + "px"; tip.style.top = (ev.clientY - box.top) + "px"; tip.style.opacity = 1;
+}
+function hideTip(){ tip.style.opacity = 0; }
+
+const css = getComputedStyle(document.documentElement);
+function scaleColor(c){
+  const v = c >= 11 ? 5 : c >= 6 ? 4 : c >= 3 ? 3 : c >= 2 ? 2 : 1;
+  return `var(--s${v})`;
+}
+function renderLegend(){
+  const steps = [["1",1],["2",2],["3–5",3],["6–10",4],["11+",5]];
+  $("#legend").innerHTML = steps.map(([l, v]) => `<i style="background:var(--s${v})" title="${l}"></i>`).join("") + `<span style="margin-left:6px">1 to 11+ ${store.settings.countBy}</span>`;
+}
+
+let counts = new Map();
+function computeCounts(){
+  const byAuthors = store.settings.countBy === "authors";
+  const m = new Map(), seen = new Set();
+  for (const b of store.books){
+    const a = store.authors[norm(b.a)];
+    if (!a || !a.c) continue;
+    if (byAuthors){ const key = norm(b.a); if (seen.has(key)) continue; seen.add(key); }
+    m.set(a.c, (m.get(a.c) || 0) + 1);
+  }
+  counts = m;
+}
+function renderMap(){
+  paths.attr("fill", f => { const n = f.properties.name; const c = counts.get(n); return c ? scaleColor(c) : "var(--land)"; })
+       .classed("sel", f => f.properties.name === selected);
+  paths.filter(".sel").raise();
+  const entries = [...counts.entries()];
+  const small = entries.filter(([n]) => (AREA.get(n) || 0) < 40 && ANCHOR.get(n));
+  gDots.selectAll("circle").data(small, d => d[0]).join("circle")
+    .attr("class", d => d[0] === selected ? "dot sel" : "dot").attr("cx", d => ANCHOR.get(d[0])[0]).attr("cy", d => ANCHOR.get(d[0])[1])
+    .attr("fill", d => scaleColor(d[1]))
+    .style("cursor", "pointer")
+    .on("mousemove", (ev, d) => showTip(ev, d[0])).on("mouseleave", hideTip)
+    .on("click", (ev, d) => selectCountry(selected === d[0] ? null : d[0]));
+  gLbl.selectAll("text").data(entries.filter(([n]) => ANCHOR.get(n) && !isNaN(ANCHOR.get(n)[0])), d => d[0]).join("text")
+    .attr("class", d => d[0] === selected ? "lbl sel" : "lbl").text(d => d[1])
+    .attr("x", d => ANCHOR.get(d[0])[0]).attr("y", d => ANCHOR.get(d[0])[1]);
+  sizeLabels();
+  $("#emptyMap").hidden = store.books.length > 0;
+}
+function sizeLabels(){
+  const cw = document.getElementById("map").clientWidth || W;
+  const f = Math.min(2.4, Math.max(1, 900 / cw));
+  gLbl.selectAll("text").each(function(d){
+    const area = (AREA.get(d[0]) || 0) * k * k;
+    const small = area < 40 * k * k && (AREA.get(d[0]) || 0) < 40;
+    const fs = (area > 3000 ? 15 : area > 600 ? 12 : 10) * f / k;
+    d3.select(this).attr("font-size", fs).attr("stroke-width", 3 / k)
+      .attr("dy", small ? -9 * f / k : 0);
+  });
+  gDots.selectAll("circle").attr("r", 3.2 * f / Math.sqrt(k));
+}
+window.addEventListener("resize", () => { clearTimeout(window.__rz); window.__rz = setTimeout(sizeLabels, 150); });
+function __noop(){
+}
+
+/* ---------- lists ---------- */
+let filter = "all", query = "", limit = 150;
+function renderHero(){
+  const n = counts.size;
+  const authorsAll = Object.values(store.authors);
+  const usedAuthors = new Set(store.books.map(b => norm(b.a)));
+  const need = authorsAll.filter(a => usedAuthors.has(norm(a.n)) && !a.c).length;
+  const big = $("#bigCount");
+  big.firstChild.nodeValue = `${n} ${n === 1 ? "country" : "countries"}`;
+  $("#bigSub").textContent = store.books.length ? `out of ${TOTAL}, from ${store.books.length} book${store.books.length===1?"":"s"} by ${usedAuthors.size} author${usedAuthors.size===1?"":"s"}` : "Your reading, mapped by where its authors come from.";
+  $("#statline").innerHTML = store.books.length
+    ? (need ? `<b>${need}</b> author${need===1?"":"s"} still need${need===1?"s":""} a country` : `Every author is on the map`)
+    : "";
+}
+function renderCountries(){
+  const list = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const max = list.length ? list[0][1] : 1;
+  const ul = $("#clist");
+  if (!list.length){ ul.innerHTML = `<li class="muted" style="padding:8px 2px">Countries appear here once your authors have one.</li>`; return; }
+  ul.innerHTML = list.map(([n, c]) => `<li><button data-c="${esc(n)}" class="${n === selected ? "on" : ""}" aria-pressed="${n === selected}"><span class="cn">${esc(n)}</span><span class="cb"><i style="width:${Math.max(6, c / max * 100)}%;background:${scaleColor(c)}"></i></span><span class="cc">${c}</span></button></li>`).join("");
+}
+function renderBooks(){
+  if (selected && !counts.get(selected)) return renderSuggestions();
+  let items = store.books.map((b, i) => ({ b, i, a: store.authors[norm(b.a)] }));
+  if (selected) items = items.filter(x => x.a && x.a.c === selected);
+  if (filter === "need") items = items.filter(x => !x.a || !x.a.c);
+  if (query){ const q = query.toLowerCase(); items = items.filter(x => x.b.t.toLowerCase().includes(q) || x.b.a.toLowerCase().includes(q)); }
+  items.sort((x, y) => (y.b.d || "").localeCompare(x.b.d || "") || x.b.t.localeCompare(y.b.t));
+  $("#bookHead").textContent = selected ? `Books from ${selected}` : "Books";
+  $("#clearSel").hidden = !selected;
+  const ul = $("#blist");
+  if (!items.length){
+    ul.innerHTML = `<li class="muted">${store.books.length ? (filter === "need" ? "Every book has a country." : "No books match.") : "No books yet. Import your library to begin."}</li>`;
+    $("#moreBtn").hidden = true; return;
+  }
+  ul.innerHTML = items.slice(0, limit).map(({ b, i, a }) => {
+    let label, cls;
+    if (a && a.c){ label = a.c; cls = "set"; }
+    else if (a && a.s === "p"){ label = looking ? "Looking up…" : "Not looked up"; cls = ""; }
+    else { label = "Set country"; cls = "need"; }
+    return `<li><div><div class="bt">${esc(b.t)}</div><div class="ba">${esc(b.a)}</div></div><button class="ctry ${cls}" data-i="${i}" aria-label="Country for ${esc(b.a)}: ${esc(label)}">${esc(label)}</button></li>`;
+  }).join("");
+  $("#moreBtn").hidden = items.length <= limit;
+  $("#moreBtn").textContent = `Show more (${items.length - limit} left)`;
+}
+// A country you haven't read from yet: show its best-known books instead.
+function renderSuggestions(){
+  $("#bookHead").textContent = `Books to read from ${selected}`;
+  $("#clearSel").hidden = false;
+  $("#moreBtn").hidden = true;
+  let list = (POPULAR[selected] || []).map((b, i) => ({ t: b[0], a: b[1], y: b[2], r: i + 1 }));
+  if (query){ const q = query.toLowerCase(); list = list.filter(x => x.t.toLowerCase().includes(q) || x.a.toLowerCase().includes(q)); }
+  const ul = $("#blist");
+  if (!POPULAR[selected]){
+    ul.innerHTML = `<li class="intro">You haven't read any books from ${esc(selected)} yet, and we don't have suggestions for it.</li>`;
+    return;
+  }
+  ul.innerHTML = `<li class="intro">You haven't read any books from ${esc(selected)} yet. These are its best-known books, ranked by how many languages Wikipedia covers them in.</li>` +
+    (list.length ? list.map(x => `<li><div><div class="bt">${esc(x.t)}</div><div class="ba">${esc(x.a)}${x.y ? ` · ${x.y < 0 ? -x.y + " BC" : x.y}` : ""}</div></div><span class="rank">${x.r}</span></li>`).join("")
+      : `<li class="muted">No books match.</li>`);
+}
+function renderAll(){
+  computeCounts();
+  if (selected && !NAMESET.has(selected)) selected = null;
+  renderMap(); renderHero(); renderCountries(); renderBooks(); renderLegend();
+  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.cb === store.settings.countBy));
+}
+function selectCountry(n){ selected = n; limit = 150; renderAll(); if (n && window.innerWidth < 820) $("#blist").scrollIntoView({ behavior: "smooth", block: "start" }); }
+
+/* ---------- events ---------- */
+$("#clist").addEventListener("click", e => { const b = e.target.closest("button[data-c]"); if (b) selectCountry(selected === b.dataset.c ? null : b.dataset.c); });
+$("#clearSel").onclick = () => selectCountry(null);
+document.querySelectorAll(".seg button").forEach(b => b.onclick = () => { store.settings.countBy = b.dataset.cb; renderAll(); scheduleSave(); });
+$("#fAll").onclick = () => { filter = "all"; $("#fAll").setAttribute("aria-pressed", true); $("#fNeed").setAttribute("aria-pressed", false); renderBooks(); };
+$("#fNeed").onclick = () => { filter = "need"; selected = null; $("#fNeed").setAttribute("aria-pressed", true); $("#fAll").setAttribute("aria-pressed", false); renderAll(); };
+$("#q").addEventListener("input", e => { query = e.target.value.trim(); limit = 150; renderBooks(); });
+$("#moreBtn").onclick = () => { limit += 150; renderBooks(); };
+
+const openImport = () => $("#importDlg").showModal();
+$("#importBtn").onclick = openImport; $("#importBtn2").onclick = openImport;
+$("#chooseFile").onclick = () => $("#file").click();
+document.querySelectorAll("dialog [data-close]").forEach(b => b.onclick = () => b.closest("dialog").close());
+
+$("#eSave").onclick = () => {
+  const book = store.books[editIdx]; if (!book) return;
+  const raw = $("#eCountry").value; const ak = norm(book.a);
+  if (!raw.trim()){ Object.assign(store.authors[ak], { c: null, s: "u", note: "" }); }
+  else {
+    const c = matchCountry(raw);
+    if (!c){ $("#editErr").textContent = "Pick a country from the list."; return; }
+    Object.assign(store.authors[ak], { c, s: "m", note: "" });
+  }
+  $("#editDlg").close(); renderAll(); scheduleSave();
+};
+$("#eCountry").addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); $("#eSave").click(); } });
+$("#eRemove").onclick = () => {
+  const book = store.books[editIdx]; if (!book) return;
+  store.books.splice(editIdx, 1);
+  const ak = norm(book.a);
+  if (!store.books.some(b => norm(b.a) === ak)) delete store.authors[ak];
+  $("#editDlg").close(); renderAll(); scheduleSave();
+};
+
+$("#resetBtn").onclick = () => {
+  if (!store.books.length) return;
+  if (!confirm("Remove every book and country from your library? This can't be undone.")) return;
+  store = { books: [], authors: {}, settings: store.settings }; selected = null;
+  renderAll(); scheduleSave(); status("Library cleared.");
+};
+$("#exportBtn").onclick = async () => {
+  const rows = [["Title","Author","Author country","Date read"]].concat(store.books.map(b => { const a = store.authors[norm(b.a)]; return [b.t, b.a, (a && a.c) || "", b.d || ""]; }));
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(()=>null) : null;
+  if (dl){ try { await dl.save({ filename: "bookmap.csv", data: csv }); } catch(e){} }
+  else { try { await navigator.clipboard.writeText(csv); status("Your library CSV was copied to the clipboard."); } catch(e){ status("Export isn't available in this view."); } }
+};
+
+/* ---------- boot ---------- */
+lsLoad();
+renderAll();
+const pend = Object.values(store.authors).filter(a => a.s === "p").length;
+if (pend) status(`${pend} author${pend>1?"s":""} still to look up.`, null, "Look them up");
+connect();
+})();
+</script>
+</body>
+</html>

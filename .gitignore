@@ -1,0 +1,5 @@
+# Built by build.js (and by the Pages workflow on GitHub)
+dist/
+.DS_Store
+node_modules/
+.claude/settings.local.json
