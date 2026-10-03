@@ -335,14 +335,42 @@ function setSync(t){ $("#sync").textContent = t; }
 const WD = "https://query.wikidata.org/sparql";
 // Occupations that count as "writer" when several people share a name.
 const WRITER_OCC = "wd:Q36180 wd:Q482980 wd:Q6625963 wd:Q49757 wd:Q214917 wd:Q11774202 wd:Q1930187 wd:Q4853732 wd:Q18844224 wd:Q15949613 wd:Q15980158 wd:Q201788 wd:Q4964182 wd:Q28389";
-// Name spellings to try: "J.R.R. Tolkien" is stored as "J. R. R. Tolkien", and the reverse.
+const stripAccents = s => s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").normalize("NFC");
+// Name spellings to try: "J.R.R. Tolkien" is stored as "J. R. R. Tolkien" (and the reverse),
+// "Caroline Criado Pérez" as "Caroline Criado Perez". Stray punctuation ("George Orwell.") is dropped.
 function nameVariants(n){
-  const t = n.replace(/\s+/g, " ").trim();
-  return [...new Set([t, t.replace(/\.(?=\S)/g, ". "), t.replace(/\.\s+(?=\p{Lu}\.)/gu, ".")])];
+  const t = n.replace(/\s+/g, " ").trim().replace(/[\s.,;:!?]+$/, "");
+  const v = [t, t.replace(/\.(?=\S)/g, ". "), t.replace(/\.\s+(?=\p{Lu}\.)/gu, ".")];
+  return [...new Set([...v, ...v.map(stripAccents)])];
+}
+// Languages whose names to match, by the alphabet a name is written in.
+function nameLangs(n){
+  if (/\p{Script=Cyrillic}/u.test(n)) return ["uk", "ru", "be", "bg", "sr", "mul"];
+  if (/\p{Script=Greek}/u.test(n)) return ["el", "mul"];
+  if (/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(n)) return ["zh", "ja", "ko", "mul"];
+  if (/\p{Script=Arabic}/u.test(n)) return ["ar", "fa", "ur", "mul"];
+  if (/\p{Script=Hebrew}/u.test(n)) return ["he", "yi", "mul"];
+  return ["en", "mul"];
+}
+// The words of a name, for checking a search result really is this author: lower case,
+// no accents, any order, initials ignored. "Kyung-Sook Shin" matches "Shin Kyung-sook" and
+// "Stephen W. Hawking" matches "Stephen Hawking".
+function nameWords(n){
+  return stripAccents(String(n).toLowerCase()).split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 1);
+}
+// Every word of the author's name is in the other name, which may have one extra word
+// (a middle name) unless the author goes by a single name.
+function sameName(author, other){
+  const x = nameWords(author), y = new Set(nameWords(other));
+  return x.length > 0 && x.every(w => y.has(w)) && y.size - x.length <= (x.length > 1 ? 1 : 0);
 }
 // Nationality words ("Irish", "South African") for each country, fetched once from Wikidata.
+// Extras cover ones Wikidata lacks (it has no English demonym for Ukraine, Iceland or Saudi Arabia).
 const DEMONYM_EXTRA = { "english":"United Kingdom", "scottish":"United Kingdom", "welsh":"United Kingdom", "northern irish":"United Kingdom",
-  "czech":"Czechia", "bohemian":"Czechia", "prussian":"Germany", "soviet":"Russia" };
+  "czech":"Czechia", "bohemian":"Czechia", "prussian":"Germany", "ukrainian":"Ukraine", "icelandic":"Iceland", "saudi":"Saudi Arabia",
+  "puerto rican":"Puerto Rico", "hong kong":"Hong Kong", "macanese":"Macao", "bruneian":"Brunei", "faroese":"Faroe Islands",
+  "bermudian":"Bermuda", "caymanian":"Cayman Islands", "kittitian":"St Kitts and Nevis", "vincentian":"St Vincent and the Grenadines",
+  "micronesian":"Micronesia", "manx":"Isle of Man", "sahrawi":"Western Sahara" };
 let demonymsPromise = null;
 function loadDemonyms(){
   return demonymsPromise ||= (async () => {
@@ -376,15 +404,26 @@ function descCountries(desc, demonyms){
   }
   return best ? best.cs : new Set();
 }
+// Citizenship of a multinational state (the Soviet Union, Austria-Hungary…) doesn't say which
+// modern country someone is from, so the lookup leaves those to their description and birthplace.
+const MULTINATIONAL = /^(soviet union|russian empire|austria-hungary|austrian empire|ottoman empire|holy roman empire|polish-lithuanian commonwealth|(socialist federal republic of |kingdom of )?yugoslavia|czechoslovakia|united arab republic)$/i;
+function placeCountry(label){ return label && !MULTINATIONAL.test(label.trim()) ? matchCountry(label) : null; }
+// Search matches that aren't writers are still accepted (a physicist's memoir, a general's
+// diaries), but not people known for something unrelated who happen to share the name.
+const NOT_AN_AUTHOR = /athlet|runner|footballer|soccer|cricketer|rugby|basketball|baseball|ice hockey|tennis|golfer|boxer|wrestler|cyclist|swimmer|racing driver|actor|actress|singer|rapper|musician|guitarist|drummer|dancer|olympi|\bplayer\b|model\b/i;
 const sparqlStr = s => '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
-async function wikidataLookup(authors){
-  const byName = new Map();
-  for (const a of authors) for (const v of nameVariants(a.n)) { if (!byName.has(v)) byName.set(v, []); byName.get(v).push(a); }
-  const vals = [...byName.keys()].flatMap(v => [sparqlStr(v) + "@en", sparqlStr(v) + "@mul"]).join(" ");
-  const query = `SELECT ?name ?person ?links ?writer ?desc ?citLabel ?ended ?bcLabel ?dcLabel ?wlLabel WHERE {
-  VALUES ?name { ${vals} }
-  { ?person rdfs:label ?name } UNION { ?person skos:altLabel ?name }
-  ?person wdt:P31 wd:Q5 .
+async function sparql(query){
+  const res = await fetch(WD, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/sparql-results+json" },
+    body: "query=" + encodeURIComponent(query)
+  });
+  if (!res.ok){ const e = new Error("Wikidata " + res.status); e.code = res.status === 429 ? "rate_limited" : "failed"; throw e; }
+  return (await res.json()).results.bindings;
+}
+// What we need to know about each person, for picking the right one and placing them.
+const PERSON_FIELDS = "?person ?links ?writer ?desc ?citLabel ?ended ?bcLabel ?dcLabel ?wlLabel";
+const PERSON_FACTS = `
   OPTIONAL { ?person wikibase:sitelinks ?links }
   BIND(EXISTS { ?person wdt:P106/wdt:P279? ?o . VALUES ?o { ${WRITER_OCC} } } AS ?writer)
   OPTIONAL { ?person schema:description ?desc FILTER(LANG(?desc) = "en") }
@@ -392,46 +431,103 @@ async function wikidataLookup(authors){
   OPTIONAL { ?person wdt:P19/wdt:P17 ?bc }
   OPTIONAL { ?person wdt:P20/wdt:P17 ?dc }
   OPTIONAL { ?person wdt:P937/wdt:P17 ?wl }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-}`;
-  const res = await fetch(WD, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/sparql-results+json" },
-    body: "query=" + encodeURIComponent(query)
-  });
-  if (!res.ok){ const e = new Error("Wikidata " + res.status); e.code = res.status === 429 ? "rate_limited" : "failed"; throw e; }
-  const rows = (await res.json()).results.bindings;
-  // Group rows into candidate people per author.
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }`;
+// Adds a result row to an author's candidate people.
+function addCandidate(cands, a, r){
+  if (!cands.has(a)) cands.set(a, new Map());
+  const m = cands.get(a), id = r.person.value;
+  if (!m.has(id)) m.set(id, { links: +(r.links?.value || 0), writer: r.writer?.value === "true", desc: r.desc?.value || "", from: new Set(), now: new Set(), old: new Set(), born: new Set(), died: new Set(), worked: new Set() });
+  const c = m.get(id);
+  const cit = placeCountry(r.citLabel?.value);
+  if (cit) (r.ended?.value === "true" ? c.old : c.now).add(cit);
+  for (const [k, set] of [["bcLabel", c.born], ["dcLabel", c.died], ["wlLabel", c.worked]]){
+    const x = placeCountry(r[k]?.value); if (x) set.add(x);
+  }
+}
+// Exact name match against Wikidata names and aliases.
+async function exactCandidates(authors){
+  const byName = new Map();
+  for (const a of authors) for (const v of nameVariants(a.n)) for (const l of nameLangs(v)){
+    const key = sparqlStr(v) + "@" + l;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(a);
+  }
+  const rows = await sparql(`SELECT ?name ${PERSON_FIELDS} WHERE {
+  VALUES ?name { ${[...byName.keys()].join(" ")} }
+  { ?person rdfs:label ?name } UNION { ?person skos:altLabel ?name }
+  ?person wdt:P31 wd:Q5 .${PERSON_FACTS}
+}`);
   const cands = new Map();
   for (const r of rows){
-    for (const a of byName.get(r.name.value) || []){
-      if (!cands.has(a)) cands.set(a, new Map());
-      const id = r.person.value;
-      const m = cands.get(a);
-      if (!m.has(id)) m.set(id, { links: +(r.links?.value || 0), writer: r.writer?.value === "true", desc: r.desc?.value || "", from: new Set(), now: new Set(), old: new Set(), born: new Set(), died: new Set(), worked: new Set() });
-      const c = m.get(id);
-      const cit = matchCountry(r.citLabel?.value);
-      if (cit) (r.ended?.value === "true" ? c.old : c.now).add(cit);
-      for (const [k, set] of [["bcLabel", c.born], ["dcLabel", c.died], ["wlLabel", c.worked]]){
-        const x = matchCountry(r[k]?.value); if (x) set.add(x);
-      }
-    }
+    const key = sparqlStr(r.name.value) + "@" + r.name["xml:lang"];
+    for (const a of byName.get(key) || []) addCandidate(cands, a, r);
   }
+  return cands;
+}
+// Fallback for names that didn't match exactly: Wikidata's own search, which copes with
+// case, word order and other spellings. A result only counts if its name really is the
+// author's (see sameName), checked against all its names in every language.
+async function searchCandidates(authors){
+  const hits = new Map();
+  // One search at a time with a short gap: the search API rate-limits bursts. When it does,
+  // wait as long as it asks (or a few seconds) and try again.
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  for (const a of authors){
+    const url = "https://www.wikidata.org/w/api.php?action=query&list=search&srlimit=5&format=json&origin=*&srsearch="
+      + encodeURIComponent(`${nameVariants(a.n)[0]} haswbstatement:P31=Q5`);
+    for (let attempt = 0; attempt < 4; attempt++){
+      try {
+        const res = await fetch(url);
+        if (!res.ok){ await sleep(1000 * (+res.headers.get("Retry-After") || 3 * (attempt + 1))); continue; }
+        const ids = ((await res.json()).query?.search || []).map(x => x.title).filter(t => /^Q\d+$/.test(t));
+        if (ids.length) hits.set(a, ids);
+      } catch(e){}
+      break;
+    }
+    await sleep(200);
+  }
+  const ids = [...new Set([...hits.values()].flat())];
+  const cands = new Map();
+  if (!ids.length) return cands;
+  const values = ids.map(id => "wd:" + id).join(" ");
+  const [names, facts] = await Promise.all([
+    sparql(`SELECT ?person ?n WHERE { VALUES ?person { ${values} } { ?person rdfs:label ?n } UNION { ?person skos:altLabel ?n } }`),
+    sparql(`SELECT ${PERSON_FIELDS} WHERE { VALUES ?person { ${values} }${PERSON_FACTS}
+}`)
+  ]);
+  const namesOf = new Map();
+  for (const r of names){ const id = r.person.value; if (!namesOf.has(id)) namesOf.set(id, new Set()); namesOf.get(id).add(r.n.value); }
+  for (const [a, list] of hits){
+    const ok = new Set(list.map(id => "http://www.wikidata.org/entity/" + id)
+      .filter(uri => [...(namesOf.get(uri) || [])].some(n => nameVariants(a.n).some(v => sameName(v, n)))));
+    for (const r of facts) if (ok.has(r.person.value)) addCandidate(cands, a, r);
+  }
+  return cands;
+}
+async function wikidataLookup(authors){
   const demonyms = await loadDemonyms();
   const out = new Map();
-  for (const [a, m] of cands){
-    // Prefer writers, then the best-known person (most Wikipedia articles).
-    const best = [...m.values()].sort((x, y) => (y.writer - x.writer) || (y.links - x.links))[0];
-    if (!best.writer) continue;
-    best.from = descCountries(best.desc, demonyms);
-    const c = pickCountry(best);
-    if (c) out.set(a, { c, note: best.desc.slice(0, 80) });
-  }
+  // Prefer writers, then the best-known person (most Wikipedia articles). An exact name
+  // match must be a writer, since many people share a name; a checked search match needn't be.
+  const place = (cands, writersOnly) => {
+    for (const [a, m] of cands){
+      if (out.has(a)) continue;
+      const best = [...m.values()].sort((x, y) => (y.writer - x.writer) || (y.links - x.links))[0];
+      if (!best.writer && (writersOnly || NOT_AN_AUTHOR.test(best.desc))) continue;
+      best.from = descCountries(best.desc, demonyms);
+      const c = pickCountry(best);
+      if (c) out.set(a, { c, note: best.desc.slice(0, 80) });
+    }
+  };
+  place(await exactCandidates(authors), true);
+  const rest = authors.filter(a => !out.has(a));
+  // The search is a best effort: if it fails, keep what the exact match found.
+  if (rest.length) try { place(await searchCandidates(rest), false); } catch(e){}
   return out;
 }
 
-// Scores each country linked to a person. Citizenship and the nationality in their
-// Wikidata description ("Irish novelist") count most; an ended citizenship (often just
+// Scores each country linked to a person. The nationality in their Wikidata description
+// ("Irish novelist") counts most, then citizenship; an ended citizenship (often just
 // ended by death) counts in full unless they hold a current one. Where they worked, died
 // and were born each add a point. Ties go to the stronger citizenship.
 function pickCountry(p){
@@ -440,7 +536,7 @@ function pickCountry(p){
   for (const c of p.old) cit.set(c, p.now.size ? 2 : 3);
   for (const c of p.now) cit.set(c, 3);
   for (const [c, n] of cit) add(c, n);
-  for (const c of p.from) add(c, 3);
+  for (const c of p.from) add(c, 4);
   for (const set of [p.worked, p.died, p.born]) for (const c of set) add(c, 1);
   return [...score].sort((x, y) => (y[1] - x[1]) || ((cit.get(y[0]) || 0) - (cit.get(x[0]) || 0)))[0]?.[0] || null;
 }

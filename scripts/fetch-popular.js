@@ -30,11 +30,13 @@ const shared = new Function("NAMES", [
   grab(/const ALIAS = \{[\s\S]*?\n\};/),
   grab(/function matchCountry\(s\)\{[\s\S]*?\n\}/),
   grab(/const DEMONYM_EXTRA = \{[\s\S]*?\};/),
+  grab(/const MULTINATIONAL = .*;/),
+  grab(/function placeCountry\(label\)\{.*\}/),
   grab(/function descCountries\(desc, demonyms\)\{[\s\S]*?\n\}/),
   grab(/function pickCountry\(p\)\{[\s\S]*?\n\}/),
-  "return { matchCountry, DEMONYM_EXTRA, descCountries, pickCountry };"
+  "return { matchCountry, placeCountry, DEMONYM_EXTRA, descCountries, pickCountry };"
 ].join("\n"))(NAMES);
-const { matchCountry, DEMONYM_EXTRA, descCountries, pickCountry } = shared;
+const { matchCountry, placeCountry, DEMONYM_EXTRA, descCountries, pickCountry } = shared;
 
 // ---- Wikidata helpers ----
 async function sparql(query, tries = 4){
@@ -109,10 +111,10 @@ async function main(){
       const p = people.get(id);
       if (r.name) p.name = r.name.value;
       if (r.desc) p.desc = r.desc.value;
-      const cit = matchCountry(r.citLabel?.value);
+      const cit = placeCountry(r.citLabel?.value);
       if (cit) (r.ended?.value === "true" ? p.old : p.now).add(cit);
       for (const [k, set] of [["bcLabel", p.born], ["dcLabel", p.died], ["wlLabel", p.worked]]){
-        const x = matchCountry(r[k]?.value); if (x) set.add(x);
+        const x = placeCountry(r[k]?.value); if (x) set.add(x);
       }
     }
     for (const [id, p] of people){
